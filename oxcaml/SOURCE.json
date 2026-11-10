@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/oxcaml/oxcaml",
+  "commit": "9cfe2002ce39e1657f374e6c9146af63205f1d3d",
+  "tag": "5.2.0minus-40",
+  "package": "oxcaml-compiler.5.2.0minus40",
+  "files": {
+    "parser.mly": "a47bf820a86e2b27ecd27783d6126f473587c9c7760b574a3d8495905e442631",
+    "lexer.mll": "4226654e18d0d41c0b533a9f5aae1da70473e0826fe7d2203d65be44c5d38918",
+    "lexer.mli": "25534c2eb640eca1211e32c65d938cae6c9969c4f1903ee78ad53c9be7fb6cd2",
+    "parse.ml": "613543054afab8c29e85f1cc380fd67833fc41e70d2a8fd9637525fd5d336421",
+    "parse.mli": "b909133d916e406f571e96808281b2d8797f625d7cffae8775140125d96cf6b6"
+  }
+}

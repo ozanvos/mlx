@@ -1,0 +1,3 @@
+let text () ~children ~value = ignore children; value
+let invalid (local_ value) =
+  <text value />

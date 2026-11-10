@@ -2,6 +2,10 @@
 
 An OCaml syntax dialect which adds JSX expressions to the language.
 
+**OxCaml fork:** the optional [`mlx-oxcaml` backend](oxcaml/README.md) supports
+`oxcaml-compiler.5.2.0minus40`, including native AST output, modes, unboxed values
+and original source diagnostics. The stock backend below remains available.
+
 ```ocaml
 let header ~title () =
   <header>

@@ -29,3 +29,6 @@
 
 (package
  (name ocamlmerlin-mlx))
+
+(package
+ (name mlx-oxcaml))

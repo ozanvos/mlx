@@ -41,7 +41,7 @@ jobs:
           opam-repositories: |
             default: https://github.com/ocaml/opam-repository.git
 
-      - run: opam install . --deps-only --with-test
+      - run: opam install ./mlx.opam ./ocamlmerlin-mlx.opam --deps-only --with-test
 
       - run: opam exec -- dune build -p mlx,ocamlmerlin-mlx
 

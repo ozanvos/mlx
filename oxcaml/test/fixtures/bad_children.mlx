@@ -1,0 +1,5 @@
+open Runtime
+let invalid =
+  <text key=Key.label value="leaf">
+    "not a child"
+  </text>

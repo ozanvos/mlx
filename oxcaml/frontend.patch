@@ -1,0 +1,405 @@
+--- a/parser.mly
++++ b/parser.mly
+@@ -12,6 +12,8 @@
+ /*   special exception on linking described in the file LICENSE.          */
+ /*                                                                        */
+ /**************************************************************************/
++
++/* MLX JSX modifications, 2026-11-10. See SOURCE.json and frontend.patch. */
+ 
+ /* The parser definition */
+ 
+@@ -1000,6 +1002,14 @@
+ %token DONE                   "done"
+ %token DOT                    "."
+ %token DOTDOT                 ".."
++%token DOTDOTDOT              "..."
++%token SLASHGREATER           "/>"
++%token LESSGREATER            "<>"
++%token LESSSLASHGREATER       "</>"
++%token <string> JSX_LIDENT    "<lident"
++%token <string> JSX_LIDENT_E  "</lident"
++%token <string> JSX_UIDENT    "<UIdent"
++%token <string> JSX_UIDENT_E  "</UIdent"
+ %token DOTHASH                ".#"
+ %token DOWNTO                 "downto"
+ %token ELSE                   "else"
+@@ -1018,7 +1028,7 @@
+ %token FUNCTOR                "functor"
+ %token GLOBAL                 "global_"
+ %token GREATER                ">"
+-%token GREATERRBRACE          ">}"
++%token GREATER_BEFORE_RBRACE   "> (before })"
+ %token GREATERRBRACKET        ">]"
+ %token HASHLPAREN             "#("
+ %token HASHLBRACE             "#{"
+@@ -1175,7 +1185,7 @@
+ %nonassoc below_AMPERSAND
+ %right    AMPERSAND AMPERAMPER          /* expr (e && e && e) */
+ %nonassoc below_EQUAL
+-%left     INFIXOP0 EQUAL LESS GREATER   /* expr (e OP e OP e) */
++%left     INFIXOP0 EQUAL LESS GREATER LESSGREATER LESSSLASHGREATER   /* expr (e OP e OP e) */
+ %right    ATAT AT INFIXOP1              /* expr (e OP e OP e) */
+ %nonassoc below_LBRACKETAT
+ %nonassoc LBRACKETAT
+@@ -1197,6 +1207,7 @@
+           INT HASH_INT OBJECT
+           LBRACE LBRACELESS LBRACKET LBRACKETBAR LBRACKETCOLON LIDENT LPAREN
+           NEW PREFIXOP STRING TRUE UIDENT LESSLBRACKET DOLLAR
++          JSX_LIDENT JSX_UIDENT
+           LBRACKETPERCENT QUOTED_STRING_EXPR HASHLBRACE HASHLPAREN UNDERSCORE
+           HASHFALSE HASHTRUE
+ 
+@@ -2916,7 +2927,7 @@
+       { unclosed "do" $loc($1) "done" $loc($2) }
+ ;
+ %inline expr_:
+-  | simple_expr nonempty_llist(labeled_simple_expr)
++  | simple_expr nonempty_llist(labeled_simple_expr) %prec below_HASH
+       { mkexp ~loc:$sloc (Pexp_apply($1, $2)) }
+   | stack(simple_expr) %prec below_HASH { $1 }
+   | BORROW simple_expr %prec below_HASH
+@@ -2956,6 +2967,8 @@
+ ;
+ 
+ simple_expr:
++  | e=jsx_element { Jsx_helper.mkjsxexp ~loc:$loc(e) e }
++  | jsx_fragment { $1 }
+   | LPAREN seq_expr RPAREN
+       { reloc_exp ~loc:$sloc $2 }
+   | LPAREN seq_expr error
+@@ -3123,11 +3136,11 @@
+       { Pexp_apply($1, [Nolabel,$2]) }
+   | op(BANG {"!"}) simple_expr
+       { Pexp_apply($1, [Nolabel,$2]) }
+-  | LBRACELESS object_expr_content GREATERRBRACE
++  | LBRACELESS object_expr_content override_close
+       { Pexp_override $2 }
+   | LBRACELESS object_expr_content error
+       { unclosed "{<" $loc($1) ">}" $loc($3) }
+-  | LBRACELESS GREATERRBRACE
++  | LBRACELESS override_close
+       { Pexp_override [] }
+   | simple_expr DOT mkrhs(label_longident)
+       { Pexp_field($1, $3) }
+@@ -3137,7 +3150,7 @@
+       { Pexp_idx ($2, $3) }
+   | od=open_dot_declaration DOT LPAREN seq_expr RPAREN
+       { Pexp_open(od, $4) }
+-  | od=open_dot_declaration DOT LBRACELESS object_expr_content GREATERRBRACE
++  | od=open_dot_declaration DOT LBRACELESS object_expr_content override_close
+       { (* TODO: review the location of Pexp_override *)
+         Pexp_open(od, mkexp ~loc:$sloc (Pexp_override $4)) }
+   | mod_longident DOT LBRACELESS object_expr_content error
+@@ -3209,6 +3222,53 @@
+   | UNDERSCORE
+       { Pexp_hole }
+ ;
++%inline override_close:
++  GREATER_BEFORE_RBRACE RBRACE { () }
++;
++(* GREATER_BEFORE_RBRACE consumes only ">"; the brace belongs to the enclosing production. *)
++%inline closing_greater:
++  | GREATER { () }
++  | GREATER_BEFORE_RBRACE { () }
++;
++jsx_element:
++    tag=jsx_longident(JSX_UIDENT, JSX_LIDENT) props=llist(jsx_prop) SLASHGREATER {
++      let children =
++        let children, loc = mktailexp $loc(tag) [] in
++        mkexp ~loc children
++      in
++      Jsx_helper.make_jsx_element () ~raise ~loc:$loc(tag) ~tag ~end_tag:None ~props ~children }
++  | tag=jsx_longident(JSX_UIDENT, JSX_LIDENT) props=llist(jsx_prop)
++    GREATER children=llist(simple_expr) end_tag=jsx_longident(JSX_UIDENT_E, JSX_LIDENT_E) end_tag_=closing_greater {
++      let children =
++        let children, loc = mktailexp $loc(children) children in
++        mkexp ~loc children
++      in
++      let _ = end_tag_ in
++      Jsx_helper.make_jsx_element ()
++        ~raise ~loc:$loc(tag) ~tag ~end_tag:(Some (end_tag, $loc(end_tag_))) ~props ~children
++    }
++  | tag=jsx_longident(JSX_UIDENT, JSX_LIDENT) props=llist(jsx_prop)
++    GREATER DOTDOTDOT children=simple_expr end_tag=jsx_longident(JSX_UIDENT_E, JSX_LIDENT_E) end_tag_=closing_greater {
++      let _ = end_tag_ in
++      Jsx_helper.make_jsx_element ()
++        ~raise ~loc:$loc(tag) ~tag ~end_tag:(Some (end_tag, $loc(end_tag_))) ~props ~children
++    }
++;
++jsx_fragment:
++    LESSGREATER children=llist(simple_expr) LESSSLASHGREATER {
++      let children, _ = mktailexp $sloc children in
++      Jsx_helper.mkjsxexp ~loc:$sloc children
++    }
++  | LESSGREATER DOTDOTDOT children=simple_expr LESSSLASHGREATER {
++      Jsx_helper.mkjsxspread ~loc:$sloc children
++    }
++;
++jsx_prop:
++    name=LIDENT { $loc(name), `Prop_punned name }
++  | QUESTION name=LIDENT { $loc(name), `Prop_opt_punned name }
++  | name=LIDENT EQUAL expr=simple_expr { $loc(name), `Prop (name, expr) }
++  | QUESTION name=LIDENT EQUAL expr=simple_expr { $loc(name), `Prop_opt (name, expr) }
++;
+ labeled_simple_expr:
+     simple_expr %prec below_HASH
+       { (Nolabel, $1) }
+@@ -4880,10 +4940,13 @@
+ 
+ object_type:
+   | mktyp(
+-      LESS meth_list = meth_list GREATER
++      LESS meth_list = meth_list closing_greater
+         { let (f, c) = meth_list in Ptyp_object (f, c) }
+-    | LESS GREATER
++    | LESS closing_greater
+         { Ptyp_object ([], Closed) }
++    | meth_list = meth_list_jsx closing_greater
++        (* Handles an unspaced object type like [<m : int>], where the lexer fuses "<" with the first method name into JSX_LIDENT. *)
++        { let (f, c) = meth_list in Ptyp_object (f, c) }
+   )
+   { $1 }
+ ;
+@@ -5031,6 +5094,15 @@
+   | DOTDOT
+       { [], Open }
+ ;
++(* Like [meth_list], but for a first field whose label is fused with the opening ["<"] into JSX_LIDENT (see [object_type] above). *)
++meth_list_jsx:
++    head = field_semi_jsx tail = meth_list
++      { let (f, c) = tail in (head :: f, c) }
++  | head = field_semi_jsx
++      { [head], Closed }
++  | head = field_jsx
++      { [head], Closed }
++;
+ %inline field:
+   mkrhs(label) COLON poly_type_no_attr attributes
+     { let info = symbol_info $endpos in
+@@ -5047,6 +5119,25 @@
+       in
+       let attrs = add_info_attrs info ($4 @ $6) in
+       Of.tag ~loc:(make_loc $sloc) ~attrs $1 $3 }
++;
++
++(* [name] is a JSX_LIDENT: the method's label with the fused leading ["<"] already stripped by the lexer. *)
++%inline field_jsx:
++  name = JSX_LIDENT COLON poly_type_no_attr attributes
++    { let info = symbol_info $endpos in
++      let attrs = add_info_attrs info $4 in
++      Of.tag ~loc:(make_loc $sloc) ~attrs (mkrhs name $loc(name)) $3 }
++;
++
++%inline field_semi_jsx:
++  name = JSX_LIDENT COLON poly_type_no_attr attributes SEMI attributes
++    { let info =
++        match rhs_info $endpos($4) with
++        | Some _ as info_before_semi -> info_before_semi
++        | None -> symbol_info $endpos
++      in
++      let attrs = add_info_attrs info ($4 @ $6) in
++      Of.tag ~loc:(make_loc $sloc) ~attrs (mkrhs name $loc(name)) $3 }
+ ;
+ 
+ %inline inherit_field:
+@@ -5143,6 +5234,8 @@
+   | STAR           {"*"}
+   | PERCENT        {"%"}
+   | EQUAL          {"="}
++  | LESSGREATER    {"<>"}
++  | LESSSLASHGREATER {"</>"}
+   | LESS           {"<"}
+   | GREATER        {">"}
+   | OR            {"or"}
+@@ -5179,6 +5272,24 @@
+ mk_longident(prefix,final):
+    | final            { Lident $1 }
+    | prefix DOT final { Ldot($1,$3) }
++;
++jsx_longident(uident, lident):
++   | id = uident { `Module, $sloc, Lident id }
++   | id = lident { `Value, $sloc, Lident id }
++   | prefix = uident DOT id = mod_longident {
++     let rec rebase = function
++       | Lident id -> Ldot (Lident prefix, id)
++       | Ldot (prefix, id) -> Ldot (rebase prefix, id)
++       | Lapply _ -> assert false
++     in
++     `Module, $sloc, rebase id }
++   | prefix = uident DOT id = val_longident {
++     let rec rebase = function
++       | Lident id -> Ldot (Lident prefix, id)
++       | Ldot (prefix, id) -> Ldot (rebase prefix, id)
++       | Lapply _ -> assert false
++     in
++     `Value, $sloc, rebase id }
+ ;
+ val_longident:
+     mk_longident(mod_longident, val_ident) { $1 }
+--- a/lexer.mll
++++ b/lexer.mll
+@@ -12,6 +12,8 @@
+ (*   special exception on linking described in the file LICENSE.          *)
+ (*                                                                        *)
+ (**************************************************************************)
++
++(* MLX JSX modifications, 2026-11-10. See SOURCE.json and frontend.patch. *)
+ 
+ (* The lexer definition *)
+ 
+@@ -548,6 +550,12 @@
+ 
+ let symbolchar =
+   ['!' '$' '%' '&' '*' '+' '-' '.' '/' ':' '<' '=' '>' '?' '@' '^' '|' '~']
++let symbolchar_no_prefix =
++  ['$' '%' '&' '*' '+' '-' '.' '/' ':' '<' '=' '>' '?' '@' '^' '|' '~']
++let symbolchar_no_greater =
++  ['!' '$' '%' '&' '*' '+' '-' '.' '/' ':' '<' '=' '?' '@' '^' '|' '~']
++let symbolchar_no_less =
++  ['!' '$' '%' '&' '*' '+' '-' '.' '/' ':' '=' '>' '?' '@' '^' '|' '~']
+ let dotsymbolchar =
+   ['!' '$' '%' '&' '*' '+' '-' '/' ':' '=' '>' '?' '@' '^' '|']
+ let symbolchar_or_hash =
+@@ -630,6 +638,14 @@
+         lookup_keyword name }
+   | raw_ident_escape (lowercase identchar * as name)
+       { LIDENT name }
++  | "<" raw_ident_escape? (lowercase identchar * as name)
++      { JSX_LIDENT name }
++  | "</" raw_ident_escape? (lowercase identchar * as name)
++      { JSX_LIDENT_E name }
++  | "<" (uppercase identchar * as name)
++      { JSX_UIDENT name }
++  | "</" (uppercase identchar * as name)
++      { JSX_UIDENT_E name }
+   | lowercase identchar * as name
+       { lookup_keyword name }
+   (* Lowercase latin1 identifiers are split into 3 cases, and the order matters
+@@ -789,6 +805,7 @@
+     }
+   | "."  { DOT }
+   | ".." { DOTDOT }
++  | "..." { DOTDOTDOT }
+   | ".#" { DOTHASH }
+   | "." (dotsymbolchar symbolchar* as op) { DOTOP op }
+   | ":"  { COLON }
+@@ -798,6 +815,8 @@
+   | ";"  { SEMI }
+   | ";;" { SEMISEMI }
+   | "<"  { LESS }
++  | "<>" { LESSGREATER }
++  | "</>" { LESSSLASHGREATER }
+   | "<[" {
+       if !(Syntax_mode.quotations) then
+         LESSLBRACKET
+@@ -827,9 +846,26 @@
+   | "|]" { BARRBRACKET }
+   | ":]" { COLONRBRACKET }
+   | ">"  { GREATER }
+-  | ">]" { GREATERRBRACKET }
++  | ">]" { produce_and_backtrack lexbuf GREATER 1 }
++  | ">:]" { produce_and_backtrack lexbuf GREATER 2 }
++  | "/>" { SLASHGREATER }
+   | "}"  { RBRACE }
+-  | ">}" { GREATERRBRACE }
++  | ">" (blank | newline)* "}"
++      { (* Keep the closer distinct from infix ">", but leave "}" for the enclosing record, object override, or indexing expression. *)
++        lexbuf.Lexing.lex_curr_pos <- lexbuf.Lexing.lex_start_pos + 1;
++        let lex_start_p = lexbuf.lex_start_p in
++        lexbuf.lex_curr_p <-
++          { lex_start_p with pos_cnum = lex_start_p.pos_cnum + 1 };
++        GREATER_BEFORE_RBRACE
++      }
++  | ">|]"
++      { (* Gives back ">" so "|]" lexes separately as BARRBRACKET, closing a JSX element inside an array literal. *)
++        lexbuf.Lexing.lex_curr_pos <- lexbuf.Lexing.lex_start_pos + 1;
++        let lex_start_p = lexbuf.lex_start_p in
++        lexbuf.lex_curr_p <-
++          { lex_start_p with pos_cnum = lex_start_p.pos_cnum + 1 };
++        GREATER
++      }
+   | "[@" { LBRACKETAT }
+   | "[@@"  { LBRACKETATAT }
+   | "[@@@" { LBRACKETATATAT }
+@@ -847,8 +883,38 @@
+             { PREFIXOP op }
+   | ['~' '?'] symbolchar_or_hash + as op
+             { PREFIXOP op }
+-  | ['=' '<' '>' '|' '&' '$'] symbolchar * as op
++  | ['<' '|' '&' '$'] symbolchar * as op
++            { let n = String.length op in
++              let keep k tok =
++                lexbuf.Lexing.lex_curr_pos <- lexbuf.Lexing.lex_start_pos + k;
++                let lex_start_p = lexbuf.lex_start_p in
++                lexbuf.lex_curr_p <-
++                  { lex_start_p with pos_cnum = lex_start_p.pos_cnum + k };
++                tok
++              in
++              let starts_child i =
++                i < n && (op.[i] = '<' || (op.[i] = '.' && i + 2 < n && op.[i+1] = '.' && op.[i+2] = '.'))
++              in
++              if n > 2 && op.[0] = '<' && op.[1] = '>' && starts_child 2 then keep 2 LESSGREATER
++              else if n > 3 && op.[0] = '<' && op.[1] = '/' && op.[2] = '>' && starts_child 3
++              then keep 3 LESSSLASHGREATER
++              else INFIXOP0 op
++            }
++  | '=' symbolchar_no_prefix * as op
+             { INFIXOP0 op }
++  | ">" symbolchar_no_less * as op
++            { (* ">..." is reserved for JSX children spread: back up so "..." lexes separately as DOTDOTDOT. *)
++              if String.length op >= 4
++                 && op.[1] = '.' && op.[2] = '.' && op.[3] = '.'
++              then begin
++                lexbuf.Lexing.lex_curr_pos <- lexbuf.Lexing.lex_start_pos + 1;
++                let lex_start_p = lexbuf.lex_start_p in
++                lexbuf.lex_curr_p <-
++                  { lex_start_p with pos_cnum = lex_start_p.pos_cnum + 1 };
++                GREATER
++              end else
++                INFIXOP0 op
++            }
+   | "@" { AT }
+   | "@@" { ATAT }
+   | ['@' '^'] symbolchar * as op
+@@ -858,7 +924,9 @@
+   | "**" symbolchar * as op
+             { INFIXOP4 op }
+   | '%'     { PERCENT }
+-  | ['*' '/' '%'] symbolchar * as op
++  | ['*' '%'] symbolchar * as op
++            { INFIXOP3 op }
++  | "/" symbolchar_no_greater * as op
+             { INFIXOP3 op }
+   | '#' symbolchar_or_hash + as op
+             { HASHOP op }
+@@ -1127,6 +1195,29 @@
+            preceded by a blank line *)
+ 
+   and docstring = Docstrings.docstring
++
++  let token_with_comments lexbuf =
++    match token_with_comments lexbuf with
++    | LBRACKETLESS ->
++      (* Check if the next character (if any) could start an identifier or a fragment.
++         UIDENT starts with A-Z, LIDENT starts with a-z or _, a fragment with > *)
++      let should_split =
++        lexbuf.Lexing.lex_curr_pos < lexbuf.Lexing.lex_buffer_len &&
++        begin
++          let next = Bytes.get lexbuf.Lexing.lex_buffer lexbuf.Lexing.lex_curr_pos in
++          next >= 'A' && next <= 'Z' || next >= 'a' && next <= 'z' || next = '_' || next = '>'
++        end
++      in
++      if should_split then begin
++        (* Backtrack one character to before the "<" so it will be lexed separately *)
++        lexbuf.Lexing.lex_curr_pos <- lexbuf.Lexing.lex_curr_pos - 1;
++        let lex_curr_p = lexbuf.lex_curr_p in
++        lexbuf.lex_curr_p <- { lex_curr_p with pos_cnum = lex_curr_p.pos_cnum - 1 };
++        LBRACKET
++      end else
++        LBRACKETLESS
++    | tok -> tok
++
+ 
+   let token lexbuf =
+     let post_pos = lexeme_end_p lexbuf in

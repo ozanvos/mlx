@@ -1,0 +1,19 @@
+opam-version: "2.0"
+synopsis: "MLX JSX syntax for the pinned OxCaml compiler"
+maintainer: ["ozanvos"]
+authors: ["Andrey Popp" "Ozan"]
+license: "LGPL-2.1-or-later WITH OCaml-LGPL-linking-exception"
+homepage: "https://github.com/ozanvos/mlx"
+bug-reports: "https://github.com/ozanvos/mlx/issues"
+dev-repo: "git+https://github.com/ozanvos/mlx.git#codex/oxcaml-compat"
+depends: [
+  "oxcaml-compiler" {= "5.2.0minus40"}
+  "dune" {>= "3.16"}
+  "menhir" {= "20260209"}
+  "menhirLib" {= "20260209"}
+  "python3" {with-test}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs "@install"]
+  ["dune" "runtest" "oxcaml/test" "-p" name "-j" jobs] {with-test}
+]

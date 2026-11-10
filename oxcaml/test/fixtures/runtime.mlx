@@ -1,0 +1,65 @@
+(* These functions stand in for a typed UI binding; no UI runtime is needed. *)
+type no_children = |
+module Key : sig
+  type container
+  type leaf
+  type 'a t
+  val root : container t
+  val label : leaf t
+end = struct
+  type container
+  type leaf
+  type 'a t = int
+  let root = 0
+  let label = 1
+end
+let column () ~(key : Key.container Key.t) ~children =
+  ignore key; String.concat "" children
+let text () ~(key : Key.leaf Key.t) ~value ~children:(_ : no_children list) =
+  ignore key; value
+module Text = struct
+  let createElement = text
+end
+let optional ?(value = "default") ~children () = value ^ String.concat "" children
+let length (local_ value) = String.length value
+external box : int64# -> int64 = "%box_int64"
+let render (local_ value) =
+  <column key=Key.root>
+    <Text key=Key.label value=(string_of_int (length value)) />
+    <text key=Key.label value=(Int64.to_string (box #42L)) />
+  </column>
+let children = <> "a" "b" </>
+let value = Some "v"
+let () =
+  assert (render "hi" = "242");
+  assert (<optional ?value>...children</optional> = "vab");
+  assert (<optional /> = "default");
+  assert (<optional children /> = "defaultab");
+  assert (<optional children>"ignored"</optional> = "defaultab");
+  assert (<>...children</> = children);
+  assert (List.length children <> 1);
+  assert ([|<optional>"x"</optional>|] = [|"defaultx"|]);
+  assert ([<optional>"x"</optional>] = ["defaultx"])
+type record = { content : string }
+let () =
+  let r = {content = <optional>"x"</optional>} in
+  assert (r.content = "defaultx")
+class object_example = object
+  val content = "old"
+  method copy = {< content = <optional>"new"</optional> >}
+  method content = content
+end
+let () =
+  let obj : <content : string; copy : 'a> as 'a = new object_example in
+  assert (obj#copy#content = "defaultnew")
+let \#local_ () ~children = String.concat "" children
+let () = assert (<\#local_>"raw"</\#local_> = "raw")
+type _ Effect.t += Ping : int Effect.t
+let answer () = Effect.perform Ping
+let result = Effect.Deep.try_with answer ()
+  { effc = fun (type a) (effect : a Effect.t) ->
+    match effect with
+    | Ping -> Some (fun (k : (a, _) Effect.Deep.continuation) ->
+        Effect.Deep.continue k 42)
+    | _ -> None }
+let () = assert (result = 42); print_endline "JSX, modes, unboxed values and effects: ok"

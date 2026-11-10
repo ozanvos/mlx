@@ -1,0 +1,12 @@
+type no_children = |
+let label ~text ~children:(_ : no_children list) () = text
+let column ~children () = String.concat "\n" children
+external box : int64# -> int64 = "%box_int64"
+
+let render (local_ name) =
+  <column>
+    <label text=("Name length: " ^ string_of_int (String.length name)) />
+    <label text=("Unboxed answer: " ^ Int64.to_string (box #42L)) />
+  </column>
+
+let () = print_endline (render "OxCaml")

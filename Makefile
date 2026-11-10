@@ -1,10 +1,10 @@
 .PHONY: install
 install:
-	opam install . --deps-only -y
+	opam install ./mlx.opam ./ocamlmerlin-mlx.opam --deps-only -y
 
 .PHONY: install-dev
 install-dev:
-	opam install . --deps-only --with-test --with-doc --with-dev-setup -y
+	opam install ./mlx.opam ./ocamlmerlin-mlx.opam --deps-only --with-test --with-doc --with-dev-setup -y
 
 .PHONY: create-switch
 create-switch:

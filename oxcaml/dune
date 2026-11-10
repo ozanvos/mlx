@@ -1,0 +1,29 @@
+(library
+ (name mlx_oxcaml_frontend)
+ (package mlx-oxcaml)
+ (modules parser lexer parse jsx_helper)
+ (enabled_if (= %{ocaml_version} "5.2.0+ox"))
+ (flags (:standard -w -a))
+ (libraries compiler-libs.common menhirLib))
+
+(executable
+ (name pp)
+ (public_name mlx-pp-oxcaml)
+ (package mlx-oxcaml)
+ (modules pp)
+ (enabled_if (= %{ocaml_version} "5.2.0+ox"))
+ (libraries mlx_oxcaml_frontend compiler-libs.common))
+
+(ocamllex lexer)
+
+(menhir
+ (modules parser)
+ (enabled_if (= %{ocaml_version} "5.2.0+ox"))
+ (flags --table --fixed-exception --strategy simplified --lalr --explain))
+
+(data_only_dirs example)
+
+(install
+ (package mlx-oxcaml)
+ (section doc)
+ (files (README.md as OXCAML.md)))

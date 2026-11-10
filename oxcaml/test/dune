@@ -1,0 +1,7 @@
+(rule
+ (alias runtest)
+ (package mlx-oxcaml)
+ (enabled_if (= %{ocaml_version} "5.2.0+ox"))
+ (deps check.py (source_tree fixtures))
+ (action
+  (run python3 %{dep:check.py} %{exe:../pp.exe} %{ocamlc} %{ocamlopt})))
